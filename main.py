@@ -1,59 +1,57 @@
 import telebot
-from telebot import types
-from flask import Flask, request
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from datetime import datetime
 import threading
 
-# --- НАСТРОЙКИ (ЗАПОЛНИ СВОИМИ ДАННЫМИ) ---
-TOKEN = '8547514667:AAETrqXRxnjyjeNecUZa-suEdeSbSjsnDbg'
-MY_PASSWORD = '120110Lox' # Придумай свой пароль
-
-app = Flask(__name__)
+# --- НАСТРОЙКИ ---
+TOKEN = "8547514667:AAETrqXRxnjyjeNecUZa-suEdeSbSjsnDbg"
+ADMIN_ID = "1211366782"
 bot = telebot.TeleBot(TOKEN)
-auth_users = set() # Список тех, кто ввел пароль
+app = Flask(__name__)
+CORS(app) # Это РАЗРЕШАЕТ сайту слать данные на сервер
 
-# Сохранение в историю
-def add_to_history(name, score):
-    with open("history.txt", "a", encoding="utf-8") as f:
-        f.write(f"👤 {name} — Результат: {score}/20\n")
+results_history = []
 
-# Прием данных с сайта
-@app.route('/send_result', methods=['POST'])
-def get_data():
-    data = request.json
-    add_to_history(data['name'], data['score'])
-    return "OK", 200
-
-# Кнопка меню
-def get_menu():
-    m = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    m.add(types.KeyboardButton("📜 История"))
-    return m
-
+# --- ЛОГИКА БОТА ---
 @bot.message_handler(commands=['start'])
-def start(m):
-    auth_users.discard(m.chat.id) # Сбрасываем вход при перезапуске
-    bot.send_message(m.chat.id, "🔐 Введите пароль для доступа к админ-панели:")
+def start(message):
+    bot.send_message(message.chat.id, "🤖 Бот системы 'Кибер-Щит' запущен!\nИспользуй /stats для просмотра результатов.")
 
-@bot.message_handler(func=lambda m: m.chat.id not in auth_users)
-def check_pass(m):
-    if m.text == MY_PASSWORD:
-        auth_users.add(m.chat.id)
-        bot.send_message(m.chat.id, "✅ Доступ разрешен!", reply_markup=get_menu())
-    else:
-        bot.send_message(m.chat.id, "❌ Неверно. Введите пароль:")
+@bot.message_handler(commands=['stats'])
+def show_stats(message):
+    if not results_history:
+        bot.send_message(message.chat.id, "Пока никто не прошел тест.")
+        return
+    
+    text = "📊 <b>ПОСЛЕДНИЕ РЕЗУЛЬТАТЫ:</b>\n\n"
+    for res in results_history[-10:]: # Показать последние 10
+        text += f"👤 {res['name']}: <b>{res['score']}/20</b> ({res['date']})\n"
+    bot.send_message(message.chat.id, text, parse_mode='html')
 
-@bot.message_handler(func=lambda m: m.text == "📜 История")
-def show_hist(m):
+# --- API ДЛЯ САЙТА ---
+@app.route('/send_result', methods=['POST'])
+def receive_result():
+    data = request.json
+    name = data.get('name', 'Аноним')
+    score = data.get('score', 0)
+    time_now = datetime.now().strftime("%H:%M:%S")
+
+    # Сохраняем в память
+    results_history.append({"name": name, "score": score, "date": time_now})
+
+    # Отправляем мгновенное уведомление админу
     try:
-        with open("history.txt", "r", encoding="utf-8") as f:
-            text = f.read()
-            bot.send_message(m.chat.id, text if text else "История пуста")
-    except:
-        bot.send_message(m.chat.id, "История пока пуста")
+        bot.send_message(ADMIN_ID, f"🛡 <b>НОВЫЙ РЕЗУЛЬТАТ!</b>\n👤 Имя: {name}\n✅ Баллы: {score}/20", parse_mode='html')
+    except Exception as e:
+        print(f"Ошибка отправки в ТГ: {e}")
 
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+    return jsonify({"status": "success"}), 200
+
+# Запуск бота в отдельном потоке, чтобы Flask работал параллельно
+def run_bot():
+    bot.polling(none_stop=True)
 
 if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()
-    bot.polling(none_stop=True)
+    threading.Thread(target=run_bot).start()
+    app.run(host="0.0.0.0", port=10000)
