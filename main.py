@@ -4,7 +4,7 @@ from flask import Flask, request
 import threading
 
 # --- НАСТРОЙКИ (ЗАПОЛНИ СВОИМИ ДАННЫМИ) ---
-TOKEN = '8547514667:AAFiuyRvx8ZSId0iN8QkDb7cS40YmBDa1dE'
+TOKEN = '8547514667:AAETrqXRxnjyjeNecUZa-suEdeSbSjsnDbg'
 MY_PASSWORD = '120110Lox' # Придумай свой пароль
 
 app = Flask(__name__)
