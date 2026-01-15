@@ -1,4 +1,3 @@
 pyTelegramBotAPI
 flask
-gunicorn
 flask-cors
