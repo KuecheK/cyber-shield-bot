@@ -72,7 +72,9 @@ def clear_messages():
     """Очищает все сообщения"""
     with open(MESSAGES_FILE, "w", encoding="utf-8") as f:
         json.dump([], f)
-""
+
+def save_errors(wrong_questions):
+    """Сохраняет вопросы с ошибками для аналитики"""
     if not wrong_questions:
         return
     
@@ -127,16 +129,11 @@ def main_keyboard():
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
         telebot.types.KeyboardButton("📊 Статистика"),
-        telebot.types.KeyboardButton("🕒 Статус"),
+        telebot.types.KeyboardButton("🕒 Статус сервера"),
         telebot.types.KeyboardButton("⚠️ Трудные вопросы"),
         telebot.types.KeyboardButton("📢 Отправить сообщение"),
         telebot.types.KeyboardButton("🗑️ Очистить доску"),
     )
-    return markup
-    btn_stats = telebot.types.KeyboardButton("📊 Статистика")
-    btn_status = telebot.types.KeyboardButton("🕒 Статус сервера")
-    btn_errors = telebot.types.KeyboardButton("⚠️ Трудные вопросы")
-    markup.add(btn_stats, btn_status, btn_errors)
     return markup
 
 def is_admin(message):
@@ -165,7 +162,6 @@ def show_stats(message):
         bot.send_message(message.chat.id, "📊 База данных пуста.")
         return
     
-    # Последние 10 результатов
     recent = results[-10:]
     text = f"📊 <b>ПОСЛЕДНИЕ РЕЗУЛЬТАТЫ (макс 10):</b>\n\n"
     for i, res in enumerate(recent, 1):
@@ -209,17 +205,6 @@ def clear_board(message):
     clear_messages()
     bot.send_message(message.chat.id, "✅ Доска объявлений очищена!")
 
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and not message.text.startswith('/'))
-def handle_user_text(message):
-    """Обработка произвольного текста от админа"""
-    global admin_waiting_for_message
-    
-    if admin_waiting_for_message:
-        save_message(message.text)
-        bot.send_message(message.chat.id, f"✅ Сообщение отправлено на доску!\n\n📝 {message.text}")
-        admin_waiting_for_message = False
-        bot.send_message(message.chat.id, "Выбери действие:", reply_markup=main_keyboard())
-
 @bot.message_handler(func=lambda message: message.text == "⚠️ Трудные вопросы")
 def show_errors(message):
     if not is_admin(message):
@@ -228,16 +213,15 @@ def show_errors(message):
     error_report = get_top_errors_report()
     bot.send_message(message.chat.id, error_report, parse_mode='html')
 
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID)
-def handle_admin_message(message):
-    """Обработчик для любых сообщений админа - используется для отправки уведомлений пользователям"""
-    if message.text.startswith('/'):
-        return  # Игнорируем команды
+@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and not message.text.startswith('/'))
+def handle_admin_input(message):
+    global admin_waiting_for_message
     
-    # Отправляем сообщение на сайт
-    user_message = message.text
-    confirmation = f"✅ Сообщение отправлено на сайт: {user_message[:50]}..."
-    bot.send_message(message.chat.id, confirmation)
+    if admin_waiting_for_message:
+        save_message(message.text)
+        bot.send_message(message.chat.id, f"✅ Сообщение отправлено на доску!\n\n📝 {message.text}")
+        admin_waiting_for_message = False
+        bot.send_message(message.chat.id, "Выбери действие:", reply_markup=main_keyboard())
 
 # --- API ДЛЯ САЙТА ---
 @app.route('/send_result', methods=['POST', 'GET'])
@@ -250,20 +234,20 @@ def receive_result():
         name = data.get('name', 'Аноним')
         score = data.get('score', 0)
         wrong_qs = data.get('wrong_questions', [])
+        
+        answer_times = data.get('answer_times', {})
         suspicious_data = {
             'answers': data.get('suspicious_answers', 0),
-            'avg_time': data.get('answer_times', {}).get('average_time', 0),
-            'suspicious_percent': data.get('answer_times', {}).get('suspicious_percent', 0),
-            'is_suspicious': float(data.get('answer_times', {}).get('suspicious_percent', 0)) > 30
+            'avg_time': answer_times.get('average_time', 0),
+            'suspicious_percent': answer_times.get('suspicious_percent', 0),
+            'is_suspicious': float(answer_times.get('suspicious_percent', 0)) > 30
         }
         
         time_now = datetime.now().strftime("%d.%m %H:%M")
 
-        # Сохраняем результат
         save_result_to_file(name, score, time_now, suspicious_data)
         save_errors(wrong_qs)
 
-        # Telegram уведомление
         flag = "⚠️ ПОДОЗРЕНИЕ:" if suspicious_data['is_suspicious'] else "✅"
         msg = f"{flag} <b>НОВЫЙ РЕЗУЛЬТАТ!</b>\n"
         msg += f"👤 Имя: {name}\n"
@@ -284,7 +268,6 @@ def receive_result():
 
 @app.route('/get_results', methods=['GET'])
 def get_results():
-    """API для получения статистики"""
     results = load_results()
     return jsonify({
         "total": len(results),
@@ -292,9 +275,8 @@ def get_results():
         "recent": results[-5:] if results else []
     }), 200
 
-@app.route('/admin_message', methods=['POST', 'GET'])
+@app.route('/admin_message', methods=['GET'])
 def get_admin_messages():
-    """API для получения сообщений от админа"""
     try:
         messages = load_messages()
         return jsonify({
@@ -302,10 +284,7 @@ def get_admin_messages():
             "messages": messages
         }), 200
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # --- ЗАПУСК ---
 def run_bot():
@@ -318,4 +297,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"🌐 Flask запущен на порту {port}...")
     app.run(host="0.0.0.0", port=port, debug=False)
-
