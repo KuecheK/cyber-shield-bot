@@ -10,11 +10,14 @@ from collections import Counter
 # --- НАСТРОЙКИ ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "8547514667:AAETrqXRxnjyjeNecUZa-suEdeSbSjsnDbg")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "1211366782"))
-VERSION = "2.0.0 (Advanced Analytics)"
+VERSION = "2.1.0 (Hardcore Edition)"
 DB_FILE = "results.json"
 ERRORS_FILE = "errors_log.json"
 MESSAGES_FILE = "messages.json"
 START_TIME = datetime.now()
+
+# Количество вопросов в тесте (ОБНОВЛЕНО)
+TOTAL_QUESTIONS = 20
 
 # Состояние ввода сообщения
 admin_waiting_for_message = False
@@ -168,7 +171,8 @@ def show_stats(message):
         score = res.get('score', 0)
         suspicious = res.get('suspicious', {})
         flag = "⚠️" if suspicious.get('is_suspicious') else "✅"
-        text += f"{i}. {flag} {res['name']}: <b>{score}/17</b> | {res['date']}\n"
+        # ОБНОВЛЕНО: Используем переменную TOTAL_QUESTIONS
+        text += f"{i}. {flag} {res['name']}: <b>{score}/{TOTAL_QUESTIONS}</b> | {res['date']}\n"
     
     bot.send_message(message.chat.id, text, parse_mode='html')
 
@@ -185,7 +189,8 @@ def server_status(message):
         f"🖥 <b>СТАТУС СИСТЕМЫ:</b>\n"
         f"✅ Аптайм: <code>{uptime}</code>\n"
         f"📁 Всего тестов: <b>{len(results)}</b>\n"
-        f"📈 Средний балл: <b>{avg_score:.1f}/17</b>\n"
+        # ОБНОВЛЕНО: Используем переменную TOTAL_QUESTIONS
+        f"📈 Средний балл: <b>{avg_score:.1f}/{TOTAL_QUESTIONS}</b>\n"
         f"🚀 Версия: {VERSION}"
     )
     bot.send_message(message.chat.id, status_text, parse_mode='html')
@@ -251,7 +256,8 @@ def receive_result():
         flag = "⚠️ ПОДОЗРЕНИЕ:" if suspicious_data['is_suspicious'] else "✅"
         msg = f"{flag} <b>НОВЫЙ РЕЗУЛЬТАТ!</b>\n"
         msg += f"👤 Имя: {name}\n"
-        msg += f"✅ Баллы: {score}/17\n"
+        # ОБНОВЛЕНО: Используем переменную TOTAL_QUESTIONS
+        msg += f"✅ Баллы: {score}/{TOTAL_QUESTIONS}\n"
         
         if wrong_qs:
             msg += f"❌ Ошибки: {', '.join(map(str, wrong_qs))}\n"
