@@ -17,7 +17,7 @@ MESSAGES_FILE = "messages.json"
 START_TIME = datetime.now()
 
 # Количество вопросов в тесте (ОБНОВЛЕНО)
-TOTAL_QUESTIONS = 20
+TOTAL_QUESTIONS = 17
 
 # Состояние ввода сообщения
 admin_waiting_for_message = False
@@ -298,8 +298,26 @@ def run_bot():
     bot.remove_webhook()
     bot.polling(none_stop=True, timeout=30)
 
+# --- ЗАПУСК ---
+def run_bot():
+    try:
+        # Пытаемся отправить тестовое сообщение админу при старте
+        bot.remove_webhook()
+        bot.send_message(ADMIN_ID, "🚀 **Система управления запущена!**\nЕсли вы видите это сообщение, значит кнопки должны работать.")
+        print("🤖 Бот успешно запущен и слушает команды...")
+        bot.polling(none_stop=True, interval=0, timeout=60)
+    except Exception as e:
+        print(f"❌ Критическая ошибка в потоке бота: {e}")
+
 if __name__ == "__main__":
-    threading.Thread(target=run_bot, daemon=True).start()
+    # 1. Запускаем бота в отдельном фоновом потоке
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    
+    # 2. Запускаем Flask сервер (основной процесс)
     port = int(os.environ.get("PORT", 10000))
     print(f"🌐 Flask запущен на порту {port}...")
+    
+    # Важно: debug=False предотвращает двойной запуск бота
     app.run(host="0.0.0.0", port=port, debug=False)
+
